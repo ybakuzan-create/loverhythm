@@ -42,8 +42,9 @@ const createNewGame = (): GameState => {
 }
 
 const scoreOf = (s: GameState) => {
-  const base = s.girls.filter((g) => g.discovered).reduce((sum, g) => sum + [0, 100, 300, 600, 1000][g.affinity], 0)
-  const lovers = s.girls.filter((g) => g.affinity >= 2).length
+  const safeGirls = s.girls ?? []
+  const base = safeGirls.filter((g) => g.discovered).reduce((sum, g) => sum + [0, 100, 300, 600, 1000][g.affinity], 0)
+  const lovers = safeGirls.filter((g) => g.affinity >= 2).length
   const bonus = lovers >= 3 ? 1000 : lovers >= 2 ? 500 : 0
   return base + bonus + (s.stats.looks + s.stats.cleanliness + s.stats.talk) * 50 + s.bifurcationSuccesses * 300
 }
@@ -69,7 +70,8 @@ function GamePage() {
   if (!isAuthorized()) return <Navigate to="/" replace />
   const [state, setState] = useState<GameState>(() => loadGame() ?? createNewGame())
   const [selected, setSelected] = useState(0)
-  const selectedGirl = state.girls[selected]
+  const girls = state.girls ?? []
+  const selectedGirl = girls[selected]
 
   const rank = useMemo(() => {
     const s = scoreOf(state)
@@ -79,7 +81,7 @@ function GamePage() {
   const endDay = (next: GameState) => {
     next.day += 1
     next.points += 24
-    const risky = next.girls.filter((g) => g.affinity >= 2)
+    const risky = (next.girls ?? []).filter((g) => g.affinity >= 2)
     if (risky.length >= 2 && Math.random() < 0.25) {
       if (Math.random() > 0.45 + next.stats.talk * 0.04) {
         next.gameStatus = 'gameover'
@@ -109,11 +111,14 @@ function GamePage() {
     next.points -= cost
     const successRate = Math.min(0.9, (next.stats.looks + next.stats.cleanliness + next.stats.talk) / 30 + 0.1 - penalty)
     if (Math.random() < successRate) {
-      const available = next.girls.filter((g) => !g.discovered)
-      const girl = available.length > 0 && Math.random() < 0.5 ? available[0] : next.girls[rand(0, next.girls.length - 1)]
-      girl.discovered = true
-      girl.affinity = Math.min(4, (girl.affinity + (next.stats.talk >= 7 ? 2 : 1)) as Affinity)
-      next.logs.unshift({ day: next.day, text: `${girl.name} と出会って好感度アップ！`, affinityLabel: affinityLabel[girl.affinity] })
+      const nextGirls = next.girls ?? []
+      const available = nextGirls.filter((g) => !g.discovered)
+      const girl = available.length > 0 && Math.random() < 0.5 ? available[0] : (nextGirls.length > 0 ? nextGirls[rand(0, nextGirls.length - 1)] : undefined)
+      if (girl) {
+        girl.discovered = true
+        girl.affinity = Math.min(4, girl.affinity + (next.stats.talk >= 7 ? 2 : 1)) as Affinity
+        next.logs.unshift({ day: next.day, text: `${girl.name} と出会って好感度アップ！`, affinityLabel: affinityLabel[girl.affinity] })
+      }
     } else {
       next.logs.unshift({ day: next.day, text: `${text}は不発に終わった...` })
     }
@@ -136,10 +141,10 @@ function GamePage() {
 
     <section className="center panel">
       <article className="hero">
-        {selectedGirl.discovered ? <img src={selectedGirl.image} alt={selectedGirl.name} /> : <div className="locked">🔒 未発見</div>}
-        <div className="overlay"><h2>{selectedGirl.discovered ? selectedGirl.name : '???'}</h2><span className={`badge ${affinityClass[selectedGirl.affinity]}`}>{affinityLabel[selectedGirl.affinity]}</span><p>{selectedGirl.discovered ? selectedGirl.comment : '出会いを探そう。'}</p></div>
+        {selectedGirl ? (selectedGirl.discovered ? <img src={selectedGirl.image} alt={selectedGirl.name} /> : <div className="locked">🔒 未発見</div>) : <div className="locked">まだ出会っていません</div>}
+        <div className="overlay"><h2>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.name : '???') : '---'}</h2>{selectedGirl ? <span className={`badge ${affinityClass[selectedGirl.affinity]}`}>{affinityLabel[selectedGirl.affinity]}</span> : null}<p>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.comment : '出会いを探そう。') : 'まだ出会っていません'}</p></div>
       </article>
-      <div className="thumbs">{state.girls.map((g, i) => <button key={g.id} className={`thumb ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={g.image} alt={g.name} /> : <div className='lockedSmall'>🔒</div>}<span>{g.discovered ? g.name : '未発見'}</span></button>)}</div>
+      <div className="thumbs">{girls.map((g, i) => <button key={g.id} className={`thumb ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={g.image} alt={g.name} /> : <div className='lockedSmall'>🔒</div>}<span>{g.discovered ? g.name : '未発見'}</span></button>)}</div>
     </section>
 
     <aside className="right panel">
