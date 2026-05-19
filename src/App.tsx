@@ -8,10 +8,10 @@ const affinityLabel = ['全然', '気になる', '好き', '大好き', 'エン�
 const affinityClass = ['zero', 'one', 'two', 'three', 'four']
 
 const GIRL_MASTER = [
-  { name: 'あかり', image: '/images/girls/akari.webp', comment: '一緒にいると落ち着くね。' },
-  { name: 'みさき', image: '/images/girls/misaki.webp', comment: '次はどこに行く？' },
-  { name: 'ゆい', image: '/images/girls/yui.webp', comment: 'もっとあなたを知りたいな。' },
-  { name: 'ことね', image: '/images/girls/kotone.webp', comment: '今日は良い日になりそう。' }
+  { name: 'あかり', image: '/images/girls/akari.png', comment: '一緒にいると落ち着くね。' },
+  { name: 'みさき', image: '/images/girls/misaki.png', comment: '次はどこに行く？' },
+  { name: 'ゆい', image: '/images/girls/yui.png', comment: 'もっとあなたを知りたいな。' },
+  { name: 'ことね', image: '/images/girls/kotone.png', comment: '今日は良い日になりそう。' }
 ]
 
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
