@@ -1,0 +1,8 @@
+body { margin: 0; background: #f8ecf3; font-family: system-ui, sans-serif; }
+.container { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; padding: 16px; }
+.card { background: #fff; border-radius: 12px; padding: 16px; margin: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.08); }
+.actions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; margin: 8px 0; }
+button { border: 0; background: #ea5c9b; color: #fff; border-radius: 8px; padding: 8px; cursor: pointer; }
+input { width: 100%; padding: 10px; margin-bottom: 8px; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.error { color: #b91c1c; }
