@@ -10,6 +10,7 @@ export interface Girl {
   id: string
   name: string
   affinity: Affinity
+  affinityExp: number
   image: string
   comment: string
   discovered: boolean

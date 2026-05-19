@@ -6,12 +6,13 @@ import type { Affinity, GameState, Girl, PlayerStats } from './types'
 const PASSWORD = 'loverhythm'
 const affinityLabel = ['全然', '気になる', '好き', '大好き', 'エンドレス']
 const affinityClass = ['zero', 'one', 'two', 'three', 'four']
+const AFFINITY_THRESHOLDS = [0, 30, 70, 120, 180]
 
 const GIRL_MASTER = [
-  { name: 'あかり', image: '/images/girls/akari.png', comment: '一緒にいると落ち着くね。' },
-  { name: 'みさき', image: '/images/girls/misaki.png', comment: '次はどこに行く？' },
-  { name: 'ゆい', image: '/images/girls/yui.png', comment: 'もっとあなたを知りたいな。' },
-  { name: 'ことね', image: '/images/girls/kotone.png', comment: '今日は良い日になりそう。' }
+  { id: 'akari', name: 'あかり', image: '/images/girls/akari.png', comment: '一緒にいると落ち着くね。' },
+  { id: 'misaki', name: 'みさき', image: '/images/girls/misaki.png', comment: '次はどこに行く？' },
+  { id: 'yui', name: 'ゆい', image: '/images/girls/yui.png', comment: 'もっとあなたを知りたいな。' },
+  { id: 'kotone', name: 'ことね', image: '/images/girls/kotone.png', comment: '今日は良い日になりそう。' }
 ]
 
 const rand = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min
@@ -25,9 +26,9 @@ const randomStats = (): PlayerStats => {
 }
 
 const toGirl = (index: number, discovered = false): Girl => ({
-  id: `girl-${index}`,
   ...GIRL_MASTER[index],
   affinity: 0,
+  affinityExp: 0,
   discovered
 })
 
@@ -37,6 +38,7 @@ const createNewGame = (): GameState => {
     const i = rand(0, girls.length - 1)
     girls[i].discovered = true
     girls[i].affinity = 1
+    girls[i].affinityExp = AFFINITY_THRESHOLDS[1]
   }
   return { day: 1, points: 24, stats: randomStats(), girls, gameStatus: 'playing', bifurcationSuccesses: 0, logs: [] }
 }
@@ -48,6 +50,16 @@ const scoreOf = (s: GameState) => {
   const bonus = lovers >= 3 ? 1000 : lovers >= 2 ? 500 : 0
   return base + bonus + (s.stats.looks + s.stats.cleanliness + s.stats.talk) * 50 + s.bifurcationSuccesses * 300
 }
+
+const affinityFromExp = (exp: number): Affinity => {
+  if (exp >= AFFINITY_THRESHOLDS[4]) return 4
+  if (exp >= AFFINITY_THRESHOLDS[3]) return 3
+  if (exp >= AFFINITY_THRESHOLDS[2]) return 2
+  if (exp >= AFFINITY_THRESHOLDS[1]) return 1
+  return 0
+}
+
+const getGirlImagePath = (girl: Girl) => `/images/girls/${girl.id}_${girl.affinity}.png`
 
 function PasswordPage() {
   const [value, setValue] = useState('')
@@ -70,6 +82,7 @@ function GamePage() {
   if (!isAuthorized()) return <Navigate to="/" replace />
   const [state, setState] = useState<GameState>(() => loadGame() ?? createNewGame())
   const [selected, setSelected] = useState(0)
+  const [rankupMessage, setRankupMessage] = useState<string | null>(null)
   const girls = state.girls ?? []
   const selectedGirl = girls[selected]
 
@@ -96,6 +109,14 @@ function GamePage() {
     setState(next)
   }
 
+  const applyAffinityExp = (next: GameState, girl: Girl, gain: number) => {
+    const before = girl.affinity
+    girl.affinityExp = Math.max(0, girl.affinityExp + gain)
+    girl.affinity = affinityFromExp(girl.affinityExp)
+    if (girl.affinity > before) setRankupMessage(`${girl.name}のランクが「${affinityLabel[girl.affinity]}」に上がりました！`)
+    next.logs.unshift({ day: next.day, text: `${girl.name}との親密度が上がった (+${gain})`, affinityLabel: affinityLabel[girl.affinity] })
+  }
+
   const improve = (key: keyof PlayerStats, amount: number, cost: number, text: string) => {
     if (state.points < cost) return
     const next = structuredClone(state)
@@ -116,11 +137,44 @@ function GamePage() {
       const girl = available.length > 0 && Math.random() < 0.5 ? available[0] : (nextGirls.length > 0 ? nextGirls[rand(0, nextGirls.length - 1)] : undefined)
       if (girl) {
         girl.discovered = true
-        girl.affinity = Math.min(4, girl.affinity + (next.stats.talk >= 7 ? 2 : 1)) as Affinity
-        next.logs.unshift({ day: next.day, text: `${girl.name} と出会って好感度アップ！`, affinityLabel: affinityLabel[girl.affinity] })
+        applyAffinityExp(next, girl, next.stats.talk >= 7 ? 14 : 10)
       }
     } else {
       next.logs.unshift({ day: next.day, text: `${text}は不発に終わった...` })
+    }
+    endDay(next)
+  }
+
+  const interact = (mode: 'date' | 'meal' | 'hotel') => {
+    if (!selectedGirl || !selectedGirl.discovered) return
+    const cost = mode === 'date' ? 6 : mode === 'meal' ? 4 : 8
+    if (state.points < cost) return
+    const next = structuredClone(state)
+    next.points -= cost
+    const girl = (next.girls ?? [])[selected]
+    if (!girl) return endDay(next)
+
+    if (mode === 'date' || mode === 'meal') {
+      const statTotal = next.stats.looks + next.stats.cleanliness + next.stats.talk
+      const gain = mode === 'date' ? rand(8, 16) + Math.floor(statTotal / 5) : rand(5, 12) + Math.floor(statTotal / 6)
+      applyAffinityExp(next, girl, gain)
+      return endDay(next)
+    }
+
+    const before = girl.affinity
+    if (before === 1 || before === 2) {
+      girl.affinity = (before - 1) as Affinity
+      girl.affinityExp = AFFINITY_THRESHOLDS[girl.affinity]
+      next.logs.unshift({ day: next.day, text: `${girl.name}との空気が悪くなった...`, affinityLabel: affinityLabel[girl.affinity] })
+    } else if (before === 3) {
+      girl.affinity = 4
+      girl.affinityExp = AFFINITY_THRESHOLDS[4]
+      setRankupMessage(`${girl.name}のランクが「${affinityLabel[girl.affinity]}」に上がりました！`)
+      next.logs.unshift({ day: next.day, text: `${girl.name}との関係が急接近した！`, affinityLabel: affinityLabel[girl.affinity] })
+    } else if (before === 4) {
+      next.logs.unshift({ day: next.day, text: 'すでにエンドレスです', affinityLabel: affinityLabel[girl.affinity] })
+    } else {
+      next.logs.unshift({ day: next.day, text: 'まだ早すぎた', affinityLabel: affinityLabel[girl.affinity] })
     }
     endDay(next)
   }
@@ -130,15 +184,20 @@ function GamePage() {
   }
 
   return <main className="dashboard">
+    {rankupMessage && <div className="modalBackdrop"><div className="modal"><p>{rankupMessage}</p><button onClick={() => setRankupMessage(null)}>OK</button></div></div>}
     <aside className="left panel">
       <h2>出会った女性</h2>
-      <div className="girlList">{girls.map((g, i) => <button key={g.id} className={`girlCard ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={g.image} alt={g.name} /> : <div className='lockedSmall'>🔒</div>}<div className="girlMeta"><strong>{g.discovered ? g.name : '未発見'}</strong><span className={`badge ${affinityClass[g.affinity]}`}>{g.discovered ? affinityLabel[g.affinity] : '未発見'}</span></div></button>)}</div>
+      <div className="girlList">{girls.map((g, i) => <button key={g.id} className={`girlCard ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={getGirlImagePath(g)} alt={g.name} onError={(e) => { e.currentTarget.src = '/images/girls/placeholder.png' }} /> : <div className='lockedSmall'>🔒</div>}<div className="girlMeta"><strong>{g.discovered ? g.name : '未発見'}</strong><span className={`badge ${affinityClass[g.affinity]}`}>{g.discovered ? affinityLabel[g.affinity] : '未発見'}</span></div></button>)}</div>
     </aside>
 
     <section className="center panel">
       <article className="hero">
-        {selectedGirl ? (selectedGirl.discovered ? <img src={selectedGirl.image} alt={selectedGirl.name} /> : <div className="locked">🔒 未発見</div>) : <div className="locked">まだ出会っていません</div>}
-        <div className="overlay"><h2>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.name : '???') : '---'}</h2>{selectedGirl ? <span className={`badge ${affinityClass[selectedGirl.affinity]}`}>{affinityLabel[selectedGirl.affinity]}</span> : null}<p>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.comment : '出会いを探そう。') : 'まだ出会っていません'}</p></div>
+        {selectedGirl ? (selectedGirl.discovered ? <img src={getGirlImagePath(selectedGirl)} alt={selectedGirl.name} onError={(e) => { e.currentTarget.src = '/images/girls/placeholder.png' }} /> : <div className="locked">🔒 未発見</div>) : <div className="locked">まだ出会っていません</div>}
+        <div className="overlay">
+          <div className="heroTitleRow"><h2>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.name : '???') : '---'}</h2>{selectedGirl ? <span className={`badge ${affinityClass[selectedGirl.affinity]}`}>{affinityLabel[selectedGirl.affinity]}</span> : null}</div>
+          {selectedGirl?.discovered ? <div className="girlActions"><button onClick={() => interact('date')}>デート</button><button onClick={() => interact('meal')}>ご飯</button><button onClick={() => interact('hotel')}>ホテル</button></div> : null}
+          <p>{selectedGirl ? (selectedGirl.discovered ? `${selectedGirl.comment}（親密度EXP: ${selectedGirl.affinityExp}）` : '出会いを探そう。') : 'まだ出会っていません'}</p>
+        </div>
       </article>
     </section>
 

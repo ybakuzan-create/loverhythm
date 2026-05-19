@@ -4,16 +4,27 @@ export const PASSWORD_KEY = 'loverhythm_auth'
 export const SAVE_KEY = 'loverhythm_save'
 
 const GIRL_MASTER = [
-  { name: 'あかり', image: '/images/girls/akari.webp', comment: '一緒にいると落ち着くね。' },
-  { name: 'みさき', image: '/images/girls/misaki.webp', comment: '次はどこに行く？' },
-  { name: 'ゆい', image: '/images/girls/yui.webp', comment: 'もっとあなたを知りたいな。' },
-  { name: 'ことね', image: '/images/girls/kotone.webp', comment: '今日は良い日になりそう。' }
+  { id: 'akari', name: 'あかり', image: '/images/girls/akari.png', comment: '一緒にいると落ち着くね。' },
+  { id: 'misaki', name: 'みさき', image: '/images/girls/misaki.png', comment: '次はどこに行く？' },
+  { id: 'yui', name: 'ゆい', image: '/images/girls/yui.png', comment: 'もっとあなたを知りたいな。' },
+  { id: 'kotone', name: 'ことね', image: '/images/girls/kotone.png', comment: '今日は良い日になりそう。' }
 ]
+
+const LEGACY_ID_MAP: Record<string, string> = { 'girl-0': 'akari', 'girl-1': 'misaki', 'girl-2': 'yui', 'girl-3': 'kotone' }
+const AFFINITY_THRESHOLDS = [0, 30, 70, 120, 180]
 
 const clamp = (v: unknown, min: number, max: number, fallback: number) => {
   const n = Number(v)
   if (!Number.isFinite(n)) return fallback
   return Math.max(min, Math.min(max, Math.floor(n)))
+}
+
+const affinityFromExp = (exp: number): Affinity => {
+  if (exp >= AFFINITY_THRESHOLDS[4]) return 4
+  if (exp >= AFFINITY_THRESHOLDS[3]) return 3
+  if (exp >= AFFINITY_THRESHOLDS[2]) return 2
+  if (exp >= AFFINITY_THRESHOLDS[1]) return 1
+  return 0
 }
 
 const migrateStats = (raw: unknown): PlayerStats => {
@@ -28,15 +39,23 @@ const migrateStats = (raw: unknown): PlayerStats => {
 const migrateGirls = (rawGirls: unknown): Girl[] => {
   const input = Array.isArray(rawGirls) ? rawGirls : []
   return GIRL_MASTER.map((master, i) => {
-    const g = (input[i] ?? {}) as Record<string, unknown>
-    const affinity = clamp(g.affinity, 0, 4, 0) as Affinity
+    const raw = (input.find((g) => {
+      if (typeof g !== 'object' || g === null) return false
+      const id = (g as Record<string, unknown>).id
+      return id === master.id || id === `girl-${i}`
+    }) ?? input[i] ?? {}) as Record<string, unknown>
+    const legacyAffinity = clamp(raw.affinity, 0, 4, 0) as Affinity
+    const affinityExp = Math.max(clamp(raw.affinityExp, 0, 9999, AFFINITY_THRESHOLDS[legacyAffinity]), AFFINITY_THRESHOLDS[legacyAffinity])
+    const affinity = affinityFromExp(affinityExp)
+    const rawId = typeof raw.id === 'string' ? raw.id : ''
     return {
-      id: typeof g.id === 'string' ? g.id : `girl-${i}`,
-      name: typeof g.name === 'string' ? g.name : master.name,
-      image: typeof g.image === 'string' ? g.image : master.image,
-      comment: typeof g.comment === 'string' ? g.comment : master.comment,
-      discovered: Boolean(g.discovered),
-      affinity
+      id: LEGACY_ID_MAP[rawId] ?? master.id,
+      name: typeof raw.name === 'string' ? raw.name : master.name,
+      image: typeof raw.image === 'string' ? raw.image : master.image,
+      comment: typeof raw.comment === 'string' ? raw.comment : master.comment,
+      discovered: Boolean(raw.discovered),
+      affinity,
+      affinityExp
     }
   })
 }
@@ -50,7 +69,7 @@ const migrateSave = (raw: unknown): GameState | null => {
         if (typeof l !== 'object' || l === null) return false
         const r = l as Record<string, unknown>
         return typeof r.day === 'number' && typeof r.text === 'string'
-      }).slice(0, 6)
+      }).slice(0, 12)
     : []
 
   const status = data.gameStatus === 'clear' || data.gameStatus === 'gameover' ? data.gameStatus : 'playing'
