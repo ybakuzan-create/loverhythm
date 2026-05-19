@@ -131,12 +131,8 @@ function GamePage() {
 
   return <main className="dashboard">
     <aside className="left panel">
-      <h1>ラブリズム</h1>
-      <small>LOVE RHYTHM</small>
-      <nav>
-        <button>ホーム</button><button>ステータス</button><button>彼女たち</button><button onClick={() => saveGame(state)}>セーブ</button><Link to="/help">ヘルプ</Link><button onClick={() => navigate('/')}>タイトルへ戻る</button>
-      </nav>
-      <div className="version">v1.1.0</div>
+      <h2>出会った女性</h2>
+      <div className="girlList">{girls.map((g, i) => <button key={g.id} className={`girlCard ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={g.image} alt={g.name} /> : <div className='lockedSmall'>🔒</div>}<div className="girlMeta"><strong>{g.discovered ? g.name : '未発見'}</strong><span className={`badge ${affinityClass[g.affinity]}`}>{g.discovered ? affinityLabel[g.affinity] : '未発見'}</span></div></button>)}</div>
     </aside>
 
     <section className="center panel">
@@ -144,7 +140,6 @@ function GamePage() {
         {selectedGirl ? (selectedGirl.discovered ? <img src={selectedGirl.image} alt={selectedGirl.name} /> : <div className="locked">🔒 未発見</div>) : <div className="locked">まだ出会っていません</div>}
         <div className="overlay"><h2>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.name : '???') : '---'}</h2>{selectedGirl ? <span className={`badge ${affinityClass[selectedGirl.affinity]}`}>{affinityLabel[selectedGirl.affinity]}</span> : null}<p>{selectedGirl ? (selectedGirl.discovered ? selectedGirl.comment : '出会いを探そう。') : 'まだ出会っていません'}</p></div>
       </article>
-      <div className="thumbs">{girls.map((g, i) => <button key={g.id} className={`thumb ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={g.image} alt={g.name} /> : <div className='lockedSmall'>🔒</div>}<span>{g.discovered ? g.name : '未発見'}</span></button>)}</div>
     </section>
 
     <aside className="right panel">
