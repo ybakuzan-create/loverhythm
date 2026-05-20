@@ -103,3 +103,8 @@ progress { width: 100%; height: 10px; }
 .modalBackdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); display:grid; place-items:center; z-index:100; }
 .modal { background: rgba(20,30,90,.95); border: 1px solid rgba(255,255,255,.25); border-radius: 16px; padding: 20px; min-width: 280px; text-align:center; }
 .modal button { margin-top: 10px; border:0; border-radius: 10px; padding: 8px 14px; background: linear-gradient(135deg,#ec4899,#8b5cf6); font-weight:700; }
+
+
+.actionChooser { display: grid; gap: 10px; width: min(560px, 92vw); }
+.actionChooser button { border:0; border-radius: 10px; padding: 10px 12px; background: linear-gradient(135deg,#22d3ee,#8b5cf6); font-weight:700; text-align:left; }
+.actionChooser .closeBtn { background: linear-gradient(135deg,#64748b,#334155); text-align:center; }

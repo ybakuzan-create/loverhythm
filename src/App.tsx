@@ -83,6 +83,7 @@ function GamePage() {
   const [state, setState] = useState<GameState>(() => loadGame() ?? createNewGame())
   const [selected, setSelected] = useState(0)
   const [rankupMessage, setRankupMessage] = useState<string | null>(null)
+  const [actionModal, setActionModal] = useState<'self' | 'meet' | null>(null)
   const girls = state.girls ?? []
   const selectedGirl = girls[selected]
 
@@ -91,9 +92,21 @@ function GamePage() {
     if (s >= 6500) return 'SSS'; if (s >= 5000) return 'SS'; if (s >= 3800) return 'S'; if (s >= 2600) return 'A'; if (s >= 1400) return 'B'; return 'C'
   }, [state])
 
-  const endDay = (next: GameState) => {
+  const addLog = (next: GameState, text: string, affinity?: Affinity) => {
+    next.logs.unshift({ day: next.day, text, affinityLabel: affinity !== undefined ? affinityLabel[affinity] : undefined })
+  }
+
+  const saveAndSet = (next: GameState) => {
+    saveGame(next)
+    setState(next)
+  }
+
+  const advanceDay = () => {
+    const next = structuredClone(state)
     next.day += 1
     next.points += 24
+    addLog(next, `DAY${next.day}へ進みました`)
+
     const risky = (next.girls ?? []).filter((g) => g.affinity >= 2)
     if (risky.length >= 2 && Math.random() < 0.25) {
       if (Math.random() > 0.45 + next.stats.talk * 0.04) {
@@ -101,12 +114,12 @@ function GamePage() {
         next.gameOverReason = '二股がバレてしまった...'
       } else {
         next.bifurcationSuccesses += 1
-        next.logs.unshift({ day: next.day, text: '修羅場を回避した。トーク力で切り抜けた！' })
+        addLog(next, '修羅場を回避した。トーク力で切り抜けた！')
       }
     }
+
     if (next.day > 14 && next.gameStatus === 'playing') next.gameStatus = 'clear'
-    saveGame(next)
-    setState(next)
+    saveAndSet(next)
   }
 
   const applyAffinityExp = (next: GameState, girl: Girl, gain: number) => {
@@ -114,69 +127,99 @@ function GamePage() {
     girl.affinityExp = Math.max(0, girl.affinityExp + gain)
     girl.affinity = affinityFromExp(girl.affinityExp)
     if (girl.affinity > before) setRankupMessage(`${girl.name}のランクが「${affinityLabel[girl.affinity]}」に上がりました！`)
-    next.logs.unshift({ day: next.day, text: `${girl.name}との親密度が上がった (+${gain})`, affinityLabel: affinityLabel[girl.affinity] })
+    addLog(next, `${girl.name}との親密度が上がった (+${gain})`, girl.affinity)
   }
 
-  const improve = (key: keyof PlayerStats, amount: number, cost: number, text: string) => {
-    if (state.points < cost) return
+  const doSelfAction = (kind: 'salon' | 'fashion' | 'reading') => {
+    const cost = 8
     const next = structuredClone(state)
-    next.points -= cost
-    next.stats[key] = Math.min(10, next.stats[key] + amount)
-    next.logs.unshift({ day: next.day, text })
-    endDay(next)
-  }
-
-  const meet = (cost: number, text: string, penalty = 0) => {
-    if (state.points < cost) return
-    const next = structuredClone(state)
-    next.points -= cost
-    const successRate = Math.min(0.9, (next.stats.looks + next.stats.cleanliness + next.stats.talk) / 30 + 0.1 - penalty)
-    if (Math.random() < successRate) {
-      const nextGirls = next.girls ?? []
-      const available = nextGirls.filter((g) => !g.discovered)
-      const girl = available.length > 0 && Math.random() < 0.5 ? available[0] : (nextGirls.length > 0 ? nextGirls[rand(0, nextGirls.length - 1)] : undefined)
-      if (girl) {
-        girl.discovered = true
-        applyAffinityExp(next, girl, next.stats.talk >= 7 ? 14 : 10)
-      }
-    } else {
-      next.logs.unshift({ day: next.day, text: `${text}は不発に終わった...` })
+    if (next.points < cost) {
+      addLog(next, 'ポイントが足りません')
+      return saveAndSet(next)
     }
-    endDay(next)
+    next.points -= cost
+    const gain = rand(4, 8)
+    if (kind === 'salon') {
+      next.stats.looks = Math.min(10, next.stats.looks + gain)
+      addLog(next, `美容室で見た目が+${gain}上がった`)
+    } else if (kind === 'fashion') {
+      next.stats.cleanliness = Math.min(10, next.stats.cleanliness + gain)
+      addLog(next, `ファッションで清潔感が+${gain}上がった`)
+    } else {
+      next.stats.talk = Math.min(10, next.stats.talk + gain)
+      addLog(next, `読書でトーク力が+${gain}上がった`)
+    }
+    saveAndSet(next)
+    setActionModal(null)
+  }
+
+  const doMeetAction = (kind: 'app' | 'gokon' | 'nanpa') => {
+    const config = {
+      app: { cost: 10, ids: ['akari', 'yui'] },
+      gokon: { cost: 12, ids: ['misaki'] },
+      nanpa: { cost: 14, ids: ['misaki', 'kotone'] }
+    }[kind]
+
+    const next = structuredClone(state)
+    if (next.points < config.cost) {
+      addLog(next, 'ポイントが足りません')
+      return saveAndSet(next)
+    }
+
+    next.points -= config.cost
+    const candidates = (next.girls ?? []).filter((g) => config.ids.includes(g.id) && !g.discovered)
+    if (candidates.length === 0) {
+      addLog(next, '新しい出会いはありませんでした')
+      saveAndSet(next)
+      setActionModal(null)
+      return
+    }
+
+    const girl = candidates[rand(0, candidates.length - 1)]
+    girl.discovered = true
+    const gain = rand(8, 14)
+    applyAffinityExp(next, girl, gain)
+    addLog(next, `${girl.name}と出会った！`)
+    saveAndSet(next)
+    setActionModal(null)
   }
 
   const interact = (mode: 'date' | 'meal' | 'hotel') => {
     if (!selectedGirl || !selectedGirl.discovered) return
     const cost = mode === 'date' ? 6 : mode === 'meal' ? 4 : 8
-    if (state.points < cost) return
     const next = structuredClone(state)
+    if (next.points < cost) {
+      addLog(next, 'ポイントが足りません')
+      return saveAndSet(next)
+    }
+
     next.points -= cost
     const girl = (next.girls ?? [])[selected]
-    if (!girl) return endDay(next)
+    if (!girl) return saveAndSet(next)
 
     if (mode === 'date' || mode === 'meal') {
       const statTotal = next.stats.looks + next.stats.cleanliness + next.stats.talk
       const gain = mode === 'date' ? rand(8, 16) + Math.floor(statTotal / 5) : rand(5, 12) + Math.floor(statTotal / 6)
       applyAffinityExp(next, girl, gain)
-      return endDay(next)
+      return saveAndSet(next)
     }
 
     const before = girl.affinity
     if (before === 1 || before === 2) {
       girl.affinity = (before - 1) as Affinity
       girl.affinityExp = AFFINITY_THRESHOLDS[girl.affinity]
-      next.logs.unshift({ day: next.day, text: `${girl.name}との空気が悪くなった...`, affinityLabel: affinityLabel[girl.affinity] })
+      addLog(next, `${girl.name}との空気が悪くなった...`, girl.affinity)
     } else if (before === 3) {
       girl.affinity = 4
       girl.affinityExp = AFFINITY_THRESHOLDS[4]
       setRankupMessage(`${girl.name}のランクが「${affinityLabel[girl.affinity]}」に上がりました！`)
-      next.logs.unshift({ day: next.day, text: `${girl.name}との関係が急接近した！`, affinityLabel: affinityLabel[girl.affinity] })
+      addLog(next, `${girl.name}との関係が急接近した！`, girl.affinity)
     } else if (before === 4) {
-      next.logs.unshift({ day: next.day, text: 'すでにエンドレスです', affinityLabel: affinityLabel[girl.affinity] })
+      addLog(next, 'すでにエンドレスです', girl.affinity)
     } else {
-      next.logs.unshift({ day: next.day, text: 'まだ早すぎた', affinityLabel: affinityLabel[girl.affinity] })
+      addLog(next, 'まだ早すぎた', girl.affinity)
     }
-    endDay(next)
+    saveAndSet(next)
   }
 
   if (state.gameStatus !== 'playing') {
@@ -185,6 +228,15 @@ function GamePage() {
 
   return <main className="dashboard">
     {rankupMessage && <div className="modalBackdrop"><div className="modal"><p>{rankupMessage}</p><button onClick={() => setRankupMessage(null)}>OK</button></div></div>}
+
+    {actionModal === 'self' && (
+      <div className="modalBackdrop"><div className="modal actionChooser"><h3>自分磨き</h3><button onClick={() => doSelfAction('salon')}>美容室：見た目が上がる / 消費 8pt</button><button onClick={() => doSelfAction('fashion')}>ファッション：清潔感が上がる / 消費 8pt</button><button onClick={() => doSelfAction('reading')}>読書：トーク力が上がる / 消費 8pt</button><button className="closeBtn" onClick={() => setActionModal(null)}>閉じる</button></div></div>
+    )}
+
+    {actionModal === 'meet' && (
+      <div className="modalBackdrop"><div className="modal actionChooser"><h3>出会い</h3><button onClick={() => doMeetAction('app')}>マッチングアプリ：あかり・ゆいと出会える可能性 / 消費 10pt</button><button onClick={() => doMeetAction('gokon')}>合コン：みさきと出会える可能性 / 消費 12pt</button><button onClick={() => doMeetAction('nanpa')}>ナンパ：みさき・ことねと出会える可能性 / 消費 14pt</button><button className="closeBtn" onClick={() => setActionModal(null)}>閉じる</button></div></div>
+    )}
+
     <aside className="left panel">
       <h2>出会った女性</h2>
       <div className="girlList">{girls.map((g, i) => <button key={g.id} className={`girlCard ${selected===i?'active':''}`} onClick={() => setSelected(i)}>{g.discovered ? <img src={getGirlImagePath(g)} alt={g.name} onError={(e) => { e.currentTarget.src = '/images/girls/placeholder.png' }} /> : <div className='lockedSmall'>🔒</div>}<div className="girlMeta"><strong>{g.discovered ? g.name : '未発見'}</strong><span className={`badge ${affinityClass[g.affinity]}`}>{g.discovered ? affinityLabel[g.affinity] : '未発見'}</span></div></button>)}</div>
@@ -204,7 +256,7 @@ function GamePage() {
     <aside className="right panel">
       <div className="card"><h3>DAY {String(state.day).padStart(2,'0')} / 14</h3><p>残り{14-state.day+1}日</p><p className="point">{state.points} pt</p></div>
       <div className="card"><h3>あなたのステータス</h3><p>見た目 Lv.{state.stats.looks}</p><progress max={10} value={state.stats.looks} /><p>清潔感 Lv.{state.stats.cleanliness}</p><progress max={10} value={state.stats.cleanliness} /><p>トーク力 Lv.{state.stats.talk}</p><progress max={10} value={state.stats.talk} /></div>
-      <div className="card actions"><h3>行動を選択</h3><button onClick={() => improve('looks',1,6,'美容室に行って見た目+1')}>自分磨き</button><button onClick={() => meet(8,'マッチング',0)}>出会い</button><button onClick={() => improve('talk',1,1,'休憩して気力回復')}>休憩</button></div>
+      <div className="card actions"><h3>行動を選択</h3><button onClick={() => setActionModal('self')}>自分磨き</button><button onClick={() => setActionModal('meet')}>出会い</button><button onClick={advanceDay}>次の日へ</button></div>
       <div className="card"><h3>今日のヒント</h3><p>清潔感を上げると、第一印象が良くなる！</p></div>
       <div className="card"><h3>直近イベントログ</h3>{state.logs.length===0?<p>まだイベントなし</p>:state.logs.map((l,idx)=><p key={idx}>DAY{l.day}: {l.text} {l.affinityLabel ? `(${l.affinityLabel})` : ''}</p>)}</div>
     </aside>
